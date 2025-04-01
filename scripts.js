@@ -39,17 +39,51 @@ function loadAttendanceData() {
     updateAttendanceCounts();
 }
 
+// Check if localStorage is available
+function isLocalStorageAvailable() {
+    try {
+        const testKey = 'test';
+        localStorage.setItem(testKey, testKey);
+        localStorage.removeItem(testKey);
+        return true;
+    } catch (e) {
+        console.error("localStorage is not available: ", e);
+        return false;
+    }
+}
+
 // Load QR Code Database from localStorage
 function loadQRCodeDatabase() {
-    const storedQRCodes = localStorage.getItem("qrCodesDatabase");
-    if (storedQRCodes) {
-        qrCodesDatabase = JSON.parse(storedQRCodes);
+    if (isLocalStorageAvailable()) {
+        const storedQRCodes = localStorage.getItem("qrCodesDatabase");
+        if (storedQRCodes) {
+            try {
+                qrCodesDatabase = JSON.parse(storedQRCodes);
+            } catch (e) {
+                console.error("Error parsing QR codes database: ", e);
+                qrCodesDatabase = [];  // Default to empty array if JSON parsing fails
+            }
+        } else {
+            console.log("No QR code database found in localStorage.");
+            qrCodesDatabase = [];  // Initialize with an empty array if no data is found
+        }
+    } else {
+        console.warn("localStorage is not supported in this browser.");
     }
 }
 
 // Save QR Code Database to localStorage
 function saveQRCodeDatabase() {
-    localStorage.setItem("qrCodesDatabase", JSON.stringify(qrCodesDatabase));
+    if (isLocalStorageAvailable()) {
+        try {
+            localStorage.setItem("qrCodesDatabase", JSON.stringify(qrCodesDatabase));
+            console.log("QR Code Database saved successfully.");
+        } catch (e) {
+            console.error("Error saving QR codes database: ", e);
+        }
+    } else {
+        console.warn("localStorage is not supported in this browser.");
+    }
 }
 
 // Setup Event Listeners
