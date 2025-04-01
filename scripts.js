@@ -39,51 +39,17 @@ function loadAttendanceData() {
     updateAttendanceCounts();
 }
 
-// Check if localStorage is available
-function isLocalStorageAvailable() {
-    try {
-        const testKey = 'test';
-        localStorage.setItem(testKey, testKey);
-        localStorage.removeItem(testKey);
-        return true;
-    } catch (e) {
-        console.error("localStorage is not available: ", e);
-        return false;
-    }
-}
-
 // Load QR Code Database from localStorage
 function loadQRCodeDatabase() {
-    if (isLocalStorageAvailable()) {
-        const storedQRCodes = localStorage.getItem("qrCodesDatabase");
-        if (storedQRCodes) {
-            try {
-                qrCodesDatabase = JSON.parse(storedQRCodes);
-            } catch (e) {
-                console.error("Error parsing QR codes database: ", e);
-                qrCodesDatabase = [];  // Default to empty array if JSON parsing fails
-            }
-        } else {
-            console.log("No QR code database found in localStorage.");
-            qrCodesDatabase = [];  // Initialize with an empty array if no data is found
-        }
-    } else {
-        console.warn("localStorage is not supported in this browser.");
+    const storedQRCodes = localStorage.getItem("qrCodesDatabase");
+    if (storedQRCodes) {
+        qrCodesDatabase = JSON.parse(storedQRCodes);
     }
 }
 
 // Save QR Code Database to localStorage
 function saveQRCodeDatabase() {
-    if (isLocalStorageAvailable()) {
-        try {
-            localStorage.setItem("qrCodesDatabase", JSON.stringify(qrCodesDatabase));
-            console.log("QR Code Database saved successfully.");
-        } catch (e) {
-            console.error("Error saving QR codes database: ", e);
-        }
-    } else {
-        console.warn("localStorage is not supported in this browser.");
-    }
+    localStorage.setItem("qrCodesDatabase", JSON.stringify(qrCodesDatabase));
 }
 
 // Setup Event Listeners
@@ -126,6 +92,8 @@ function setupEventListeners() {
     document.getElementById("password")?.addEventListener("keypress", function(event) {
         if (event.key === "Enter") handleLogin();
     });
+
+    addDatabaseImportListeners();
 }
 
 // Setup Tab Navigation for Admin Dashboard
@@ -660,8 +628,12 @@ function generateQRCodes() {
     // Clear previous QR codes
     qrCodesContainer.innerHTML = "";
     
+    // Create array to store all generated QR codes
+    const generatedCodes = [];
+    
     for (let i = 0; i < count; i++) {
         const id = `${prefix}${(startNumber + i).toString().padStart(6, '0')}`;
+        generatedCodes.push(id); // Add to array for database
         
         // Create QR item container
         const qrItem = document.createElement("div");
@@ -670,6 +642,8 @@ function generateQRCodes() {
         // Create QR canvas
         const qrCanvas = document.createElement("div");
         qrCanvas.id = `qr-${i}`;
+        qrCanvas.className = "qr-code-canvas"; // Add class for the zip function
+        qrCanvas.setAttribute('data-qr-value', id); // Store QR value for zip function
         qrItem.appendChild(qrCanvas);
         
         // Create ID label
@@ -693,13 +667,30 @@ function generateQRCodes() {
         });
     }
     
+    // Automatically add generated codes to database
+    addQRCodesToDatabase(generatedCodes);
+    
     // Show download button
     const downloadButton = document.getElementById("downloadQRZip");
     if (downloadButton) {
         downloadButton.style.display = "inline-block";
     }
+    
+    // Provide option to export database
+    const adminNotificationEl = document.getElementById("adminNotification");
+    if (adminNotificationEl) {
+        adminNotificationEl.innerHTML = `${generatedCodes.length} QR codes added to database. <button id="exportDatabase" class="btn btn-sm">Export Database</button>`;
+        adminNotificationEl.style.display = "block";
+        
+        // Add event listener for export database button
+        document.getElementById("exportDatabase").addEventListener("click", exportQRDatabase);
+        
+        // Auto-hide after 10 seconds
+        setTimeout(() => {
+            adminNotificationEl.style.display = "none";
+        }, 10000);
+    }
 }
-
 
 // Add QR codes to the database
 function addQRCodesToDatabase(codes) {
@@ -730,7 +721,6 @@ function addQRCodesToDatabase(codes) {
 
 // Download QR codes as ZIP file
 function downloadQRCodesAsZip() {
-
     // Create a new ZIP file
     const zip = new JSZip();
     
@@ -773,6 +763,59 @@ function downloadQRCodesAsZip() {
     if (totalQR > 10) {
         alert(`Preparing ${totalQR} QR codes for download. This may take a moment...`);
     }
+}
+
+// Export QR database as JSON file
+function exportQRDatabase() {
+    const dataStr = JSON.stringify(qrCodesDatabase, null, 2);
+    const dataUri = "data:application/json;charset=utf-8," + encodeURIComponent(dataStr);
+    
+    const exportLink = document.createElement("a");
+    exportLink.setAttribute("href", dataUri);
+    exportLink.setAttribute("download", `qr_database_${new Date().toISOString().split('T')[0]}.json`);
+    document.body.appendChild(exportLink);
+    exportLink.click();
+    document.body.removeChild(exportLink);
+}
+
+// Import QR database from JSON file
+function importQRDatabase(event) {
+    const file = event.target.files[0];
+    if (!file) {
+        return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const importedData = JSON.parse(e.target.result);
+            
+            // Validate it's an array
+            if (Array.isArray(importedData)) {
+                // Merge with existing database, avoiding duplicates
+                const newCodes = importedData.filter(code => !qrCodesDatabase.includes(code));
+                qrCodesDatabase = [...qrCodesDatabase, ...newCodes];
+                saveQRCodeDatabase();
+                
+                // Show notification
+                const adminNotificationEl = document.getElementById("adminNotification");
+                if (adminNotificationEl) {
+                    adminNotificationEl.textContent = `QR database imported: ${newCodes.length} new codes added.`;
+                    adminNotificationEl.style.display = "block";
+                    
+                    // Auto-hide after 5 seconds
+                    setTimeout(() => {
+                        adminNotificationEl.style.display = "none";
+                    }, 5000);
+                }
+            } else {
+                throw new Error("Invalid database format");
+            }
+        } catch (error) {
+            alert("Error importing database: " + error.message);
+        }
+    };
+    reader.readAsText(file);
 }
 
 // Export all data (admin function)
@@ -887,3 +930,36 @@ function downloadEODData() {
     downloadTodayData();
     closeEODModal();
 }
+
+// Add database import UI to admin dashboard
+function addDatabaseImportListeners() {
+    // Add import database button to admin dashboard
+    const importSection = document.createElement("div");
+    importSection.className = "import-section mt-3";
+    importSection.innerHTML = `
+        <h4>Import QR Database</h4>
+        <div class="input-group">
+            <input type="file" id="importDatabaseFile" accept=".json" class="form-control" />
+            <button id="importDatabaseBtn" class="btn btn-primary">Import</button>
+        </div>
+    `;
+    
+    // Find the QR tab content and append the import section
+    const qrTabContent = document.getElementById("qrCodeTab");
+    if (qrTabContent) {
+        qrTabContent.appendChild(importSection);
+        
+        // Add event listener for import button
+        document.getElementById("importDatabaseBtn").addEventListener("click", function() {
+            document.getElementById("importDatabaseFile").click();
+        });
+        
+        document.getElementById("importDatabaseFile").addEventListener("change", importQRDatabase);
+    }
+}
+
+// Add this line to the end of your setupEventListeners function
+// setupEventListeners() {
+//    ...existing code...
+//    addDatabaseImportListeners();
+// }
